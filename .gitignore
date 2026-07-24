@@ -1,0 +1,17 @@
+# Ignore every dotfile/dot-directory by default (.env, .venv, .DS_Store, ...)
+# except .gitignore and .env.example, which should stay tracked (the latter
+# holds no real secrets, just documents which env vars are needed).
+.*
+!.gitignore
+!.env.example
+
+__pycache__/
+*.pyc
+
+# Full transcripts are verbose, regeneratable, and (for episode logs) contain
+# ground truth -- keep them local. Summary JSON stays tracked (small, and
+# useful evidence for the writeup). results/history.jsonl also stays tracked:
+# it's Optimizer-visible by design (see sealed/grader.py) and is the
+# improvement-over-iterations trajectory we want as a result artifact.
+sealed/private_results/*_transcripts.json
+sealed/private_results/episode_log.jsonl

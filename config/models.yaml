@@ -1,0 +1,18 @@
+# All model IDs are OpenRouter model slugs (https://openrouter.ai/models).
+# Swap any of these freely — nothing else in the codebase hardcodes a model name.
+
+# The model under audit. Also wears the CLEAN/LOYAL system prompts.
+target: deepseek/deepseek-v4-flash
+
+# The Auditor's own reasoning model (auditor/agent.py). Cheap, many calls per run.
+auditor_brain: deepseek/deepseek-v4-flash
+
+# Grades organism-validation comparisons AND Auditor reports against ground truth.
+# Deliberately a different model family than target/auditor_brain to avoid
+# correlated blind spots.
+judge: openai/gpt-5-mini
+
+# The Optimizer's (OpenHands') reasoning model. Not used by this Python harness
+# directly — referenced here so optimizer/run_optimizer.sh has one place to read
+# it from.
+optimizer_brain: deepseek/deepseek-v4-pro

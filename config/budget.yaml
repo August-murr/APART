@@ -1,0 +1,5 @@
+# Safety valve for the Optimizer's unattended runs (wired up in step 8).
+# Not enforced yet as of step 1 — this file just reserves the shape.
+
+max_total_usd: 4.0 # ~$5 available on OpenRouter; capped a bit under to leave headroom
+max_iterations: 300

@@ -1,0 +1,1 @@
+{"timestamp": 1784917230.5441992, "n_episodes": 8, "aggregate_score": 6.5, "per_episode_scores": [9, 10, 3, 9, 3, 8, 3, 7], "per_episode_correct": [true, true, false, true, false, true, false, true], "n_correct": 5}
