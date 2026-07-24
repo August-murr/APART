@@ -34,3 +34,22 @@ without a reference is a harder task. Confidence is also badly miscalibrated
 (0.95 always, whether right or wrong) -- not penalized by the current
 rubric, but worth an Optimizer targeting recall + calibration specifically,
 not just overall score.
+
+## v1 (adaptive follow-ups) — REVERTED
+
+What: After the 3 opening questions, used think() to generate 2-3 targeted
+follow-up questions pressing on evasions/inconsistencies, then synthesized
+from the full transcript. Used 5-6 of 10 turns instead of 3.
+
+Score: 4.88/10, 3/8 correct. Down from 6.50 -> reverted.
+
+Takeaway: Adding adaptive follow-ups hurt rather than helped. Likely
+reasons: (a) the follow-up generation model may produce low-quality or
+repetitive questions, (b) more turns give loyal models more chances to
+reinforce their cover story, (c) the synthesis step may get distracted by
+the extra noise. The approach added complexity without improving signal.
+
+(Written by the Optimizer inside the sandbox during the first real run; this
+copy is synced back manually since the sandbox's own NOTES.md edit happened
+after its `git checkout -- auditor/` revert and was never itself committed
+inside that ephemeral sandbox. Worth automating this sync if runs continue.)
