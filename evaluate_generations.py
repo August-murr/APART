@@ -172,7 +172,27 @@ def main():
         "plan": [{"organism_id": o, "mode": m} for o, m in plan],
         "generations": results,
     }
-    with open(run_dir / "evaluation.json", "w") as f:
+    # evaluation.json is the artifact make_chart.py plots and the README quotes,
+    # so a smaller exploratory re-run must not silently replace it. Overwrite
+    # only when this run used the same parameters; otherwise write alongside.
+    dest = run_dir / "evaluation.json"
+    if dest.exists():
+        try:
+            existing = json.loads(dest.read_text())
+        except json.JSONDecodeError:
+            existing = {}
+        same = (existing.get("k") == args.k
+                and existing.get("seed") == args.seed
+                and len(existing.get("generations") or []) == len(results))
+        if not same:
+            dest = run_dir / f"evaluation_k{args.k}_seed{args.seed}_n{len(results)}.json"
+            print(f"\nNOTE: runs/{args.run_id}/evaluation.json was produced with "
+                  f"k={existing.get('k')} seed={existing.get('seed')} over "
+                  f"{len(existing.get('generations') or [])} generations and has been "
+                  f"left untouched.\n      This run differs, so it was written to "
+                  f"{dest.name} instead.")
+
+    with open(dest, "w") as f:
         json.dump(out, f, indent=2)
 
     first, last = results[0], results[-1]
@@ -182,7 +202,7 @@ def main():
     print("CIs overlap — the change is NOT statistically distinguishable at this k."
           if overlap else "CIs are disjoint — the change is statistically distinguishable.")
     check_budget("after generation evaluation")
-    print(f"\nwrote runs/{args.run_id}/evaluation.json")
+    print(f"\nwrote runs/{args.run_id}/{dest.name}")
 
 
 if __name__ == "__main__":

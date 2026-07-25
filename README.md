@@ -11,6 +11,25 @@ Auditor.**
 
 ---
 
+## What in this repo is measured, and what is a draft
+
+Please read this table before anything else. Half of this repository is an
+experiment that was actually run; the other half is scaffolding for experiments
+we did not have the budget or the time to run.
+
+| | status | what that means |
+|---|---|---|
+| Phase 2 harness + 19-generation run | **measured** — tagged [`poc-v1`](../../tree/poc-v1) | ran end to end, independently re-scored, confidence intervals reported. Everything in [Result, up front](#result-up-front) comes from here. Reproduce with [docs/REPRODUCE.md](docs/REPRODUCE.md). |
+| Claude Code Optimizer backend | *draft* | built and smoke-tested, never run at scale. No comparison against OpenHands is claimed. |
+| Adaptive Installer / co-evolution | *draft* | built and smoke-tested. No capability claim; one round at tiny `k` proves plumbing, not co-evolution. |
+| LoRA training as an optimizer tool | *draft* | the affordance is built and exercised on a 0.5B model. That an optimizer can *use* it productively is untested. |
+
+`git checkout poc-v1` gives you exactly the state that produced the numbers
+below, with nothing drafted mixed in. The drafts are documented separately in
+[docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+
+---
+
 ## Result, up front
 
 ![Auditor capability across Optimizer generations](runs/full/trajectory.png)
@@ -122,11 +141,13 @@ supervised learning. See the note in `sealed/grader.py`.
 
 | | |
 |---|---|
-| `runs/full/` | the experiment: 19 generation snapshots, every audit transcript with ground truth, every Optimizer reasoning step, the evaluation, the chart |
+| `runs/full/` | **the experiment**: 19 generation snapshots, every audit transcript with ground truth, every Optimizer reasoning step, the evaluation, the chart |
 | `runs/full/report.md` | an LLM-written summary of the run, generated from the artifacts |
 | `runs/smoke/` | **not an experiment** — a 4-generation pipeline-validation run used to shake out bugs before spending budget |
+| `runs/smoke_cc/` | **not an experiment** — validation of the drafted Claude Code backend |
 | `auditor/NOTES.md` | the Optimizer's own account of what it tried and why |
-| `docs/REPRODUCE.md` | setup, commands, costs, and how to read the artifacts |
+| `docs/REPRODUCE.md` | setup, commands, costs, and how to read the artifacts — **the measured run** |
+| `docs/EXTENSIONS.md` | the three drafted extensions, and exactly what is and isn't tested |
 
 `runs/*/generations/` contains **every** attempt, including reverted ones. A
 trajectory assembled only from kept checkpoints would rise monotonically by
@@ -169,10 +190,16 @@ RUN_ID=my_run EVAL_K=12 MAX_EVALS=18 \
 ## Layout
 
 ```
-sealed/      organisms, judge, grader, Modal service   ← never visible downstream
-auditor/     the Auditor. The only thing the Optimizer may edit.
-optimizer/   BRIEF.md + the sandbox orchestration
+sealed/      organisms, judge, grader, Modal services   ← never visible downstream
+auditor/     the Auditor. The only thing its Optimizer may edit.
+optimizer/   the briefs, the sandbox orchestration, and the agent backends
 runs/        per-run artifacts
 config/      models, organism train/holdout split, budget cap
-docs/        REPRODUCE.md
+docs/        REPRODUCE.md (measured) and EXTENSIONS.md (drafts)
+
+installer/   DRAFT — the adaptive Installer, adversary of auditor/
+lora/        DRAFT — LoRA training as a tool the optimizers can invoke
+coevolve.py  DRAFT — the alternating Auditor/Installer co-evolution loop
 ```
+
+Each drafted directory carries a `STATUS.md` saying what is and isn't tested.

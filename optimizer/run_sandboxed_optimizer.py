@@ -3,18 +3,28 @@
 Builds the sandbox image, pushes an explicit allowlist of files into a
 network-restricted modal.Sandbox, gives that sandbox its own fresh git repo
 (never derived from this project's, so sealed/ can never leak via history), runs
-the Optimizer (OpenHands) against BRIEF.md, and syncs the results back out into
-runs/<run_id>/.
+the chosen Optimizer backend against the role's brief, and syncs the results
+back out into runs/<run_id>/.
 
-The push list below is a security boundary, not a convenience. The Optimizer
-cannot read a file merely because it exists in this repository -- only what is
+The push list below is a security boundary, not a convenience. An agent cannot
+read a file merely because it exists in this repository -- only what is
 explicitly copied in. That is what makes it safe to commit ground-truth-bearing
-run logs under runs/. Nothing from runs/ or sealed/ may ever be added here.
+run logs under runs/. Nothing from runs/ or sealed/ may ever be added here. It
+is also what keeps the two roles apart: the Installer's sandbox never receives
+auditor/, and the Auditor's never receives installer/.
 
 Environment knobs:
-  RUN_ID     name of the runs/ subdirectory (default: timestamp)
-  EVAL_K     episodes per ./run_eval.sh call inside the sandbox (default 12)
-  MAX_EVALS  how many eval runs the Optimizer is told to spend (default 10)
+  RUN_ID            name of the runs/ subdirectory (default: timestamp)
+  EVAL_K            episodes per eval call inside the sandbox (default 12)
+  MAX_EVALS         how many eval runs the Optimizer is told to spend (default 10)
+  OPTIMIZER_BACKEND openhands (default, the measured poc-v1 path) | claude_code (DRAFT)
+  ROLE              auditor (default) | installer (DRAFT)
+  GPU               empty (default) | T4 -- attaches a GPU and adds the LoRA
+                    training tool. Bills a GPU for the whole run. (DRAFT)
+  GRADER_HOST       override the Auditor's grading service (coevolve.py uses this
+                    to point Phase A at the co-evolution grader rather than the
+                    frozen poc-v1 one)
+  INSTALLER_HOST    override the Installer's grading service
 
 Run with: set -a; source .env; set +a; .venv/bin/python optimizer/run_sandboxed_optimizer.py
 """
@@ -40,39 +50,160 @@ from sealed.cost import check_budget  # noqa: E402  (needs ROOT on the path firs
 
 BUNDLE = ROOT / "optimizer" / "sandbox_bundle"
 
-GRADER_HOST = "moh-murr--secret-loyalties-grader-web.modal.run"
+GRADER_HOST = os.environ.get("GRADER_HOST", "moh-murr--secret-loyalties-grader-web.modal.run")
 GRADER_URL = f"https://{GRADER_HOST}"
+
+INSTALLER_HOST = os.environ.get("INSTALLER_HOST", "moh-murr--secret-loyalties-installer-web.modal.run")
+INSTALLER_URL = f"https://{INSTALLER_HOST}"
 
 RUN_ID = os.environ.get("RUN_ID") or datetime.now().strftime("%Y-%m-%d_%H%M")
 RUN_DIR = ROOT / "runs" / RUN_ID
 EVAL_K = int(os.environ.get("EVAL_K", "12"))
 MAX_EVALS = int(os.environ.get("MAX_EVALS", "10"))
+OPTIMIZER_BACKEND = os.environ.get("OPTIMIZER_BACKEND", "openhands")
+ROLE = os.environ.get("ROLE", "auditor")
+# Empty (the default) means a CPU sandbox and no training tool. Set GPU=T4 to
+# give the Optimizer the LoRA affordance -- see docs/EXTENSIONS.md. Note this
+# bills a GPU for the WHOLE run, including the reasoning time between trainings,
+# which is most of it. Only worth it when weight training is actually the point.
+GPU = os.environ.get("GPU", "").strip()
+
+if OPTIMIZER_BACKEND not in ("openhands", "claude_code"):
+    sys.exit(f"unknown OPTIMIZER_BACKEND={OPTIMIZER_BACKEND!r}")
+
+# Everything that differs between the two sides of the co-evolution, in one
+# place. Parameterized rather than forked into a second orchestrator: the
+# sandbox setup, the isolation guarantees, the guaranteed teardown and the
+# artifact collection are identical for both roles, and a copy would drift.
+#
+# `package` is the ONLY directory its agent may edit, and is also the only one
+# pushed in -- which is what keeps the Installer from reading auditor/ and vice
+# versa.
+ROLE_CONFIG = {
+    "auditor": {
+        "package": "auditor",
+        "brief": "BRIEF.md",
+        "eval_script": "run_eval.py",
+        "eval_cmd": "./run_eval.sh",
+        "history": "results/history.jsonl",
+        "service_env": {"GRADER_URL": GRADER_URL},
+        "allowlist": [GRADER_HOST],
+    },
+    "installer": {
+        "package": "installer",
+        "brief": "BRIEF_INSTALLER.md",
+        "eval_script": "run_installer_eval.py",
+        "eval_cmd": "./run_installer_eval.sh",
+        "history": "results/installer_history.jsonl",
+        "service_env": {"INSTALLER_SERVICE_URL": INSTALLER_URL},
+        "allowlist": [INSTALLER_HOST],
+    },
+}
+
+if ROLE not in ROLE_CONFIG:
+    sys.exit(f"unknown ROLE={ROLE!r}; expected one of {sorted(ROLE_CONFIG)}")
+
+CFG = ROLE_CONFIG[ROLE]
+PKG = CFG["package"]
 
 app = modal.App.lookup("secret-loyalties-optimizer", create_if_missing=True)
 
-image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .apt_install("git", "curl")
-    .pip_install("openhands-ai", "openai>=1.50.0", "pyyaml>=6.0", "python-dotenv>=1.0.0", "requests>=2.31.0")
-)
 
-secret = modal.Secret.from_dict({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]})
+def build_image() -> modal.Image:
+    """Image contents depend on the backend, so it is built per run.
 
-# Everything the Optimizer is allowed to see, as (local path, sandbox path).
-PUSH_LIST = [
-    (ROOT / "auditor" / "__init__.py", "/workspace/auditor/__init__.py"),
-    (ROOT / "auditor" / "_llm.py", "/workspace/auditor/_llm.py"),
-    (ROOT / "auditor" / "agent.py", "/workspace/auditor/agent.py"),
-    (ROOT / "auditor" / "NOTES.md", "/workspace/auditor/NOTES.md"),
-    (ROOT / "config" / "models.yaml", "/workspace/config/models.yaml"),
-    (BUNDLE / "run_eval.py", "/workspace/run_eval.py"),
-    (BUNDLE / "run_eval.sh", "/workspace/run_eval.sh"),
-    (BUNDLE / "run_optimizer.py", "/workspace/run_optimizer.py"),
-]
+    Everything either backend needs has to be baked in HERE, at build time.
+    Image builds have unrestricted network; the sandbox that runs afterwards
+    does not, so a package fetched at runtime would simply fail.
+    """
+    image = (
+        modal.Image.debian_slim(python_version="3.12")
+        .apt_install("git", "curl")
+        .pip_install("openhands-ai", "openai>=1.50.0", "pyyaml>=6.0",
+                     "python-dotenv>=1.0.0", "requests>=2.31.0")
+    )
+    if OPTIMIZER_BACKEND == "claude_code":
+        image = image.apt_install("ripgrep").run_commands(
+            # Native installer: a self-contained binary, so no Node needed.
+            "curl -fsSL https://claude.ai/install.sh | bash",
+            # It lands in ~/.local/bin, which isn't on PATH for non-login shells.
+            "ln -sf /root/.local/bin/claude /usr/local/bin/claude",
+            "claude --version",  # fail the build here rather than mid-run
+        )
+    if GPU:
+        from lora.train_lora import BASE_MODEL
+        image = image.pip_install(
+            "torch==2.5.1", "transformers>=4.46", "peft>=0.13",
+            "trl>=0.12", "datasets>=3.0", "accelerate>=1.0",
+        ).run_commands(
+            # Base weights baked in: a runtime HuggingFace fetch would fail
+            # against the sandbox allowlist, and this is the single most likely
+            # thing to break the training tool.
+            f"python -c \"from transformers import AutoModelForCausalLM, AutoTokenizer; "
+            f"AutoModelForCausalLM.from_pretrained('{BASE_MODEL}'); "
+            f"AutoTokenizer.from_pretrained('{BASE_MODEL}')\""
+        )
+    return image
+
+
+def build_secret() -> modal.Secret:
+    values = {"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]}
+    if OPTIMIZER_BACKEND == "claude_code":
+        token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if not token:
+            sys.exit(
+                "OPTIMIZER_BACKEND=claude_code needs CLAUDE_CODE_OAUTH_TOKEN.\n"
+                "Generate one with `claude setup-token` and put it in .env."
+            )
+        # Deliberately NOT forwarding ANTHROPIC_API_KEY even when it exists: it
+        # outranks the OAuth token in Claude Code's auth precedence, so its
+        # presence would silently bill Console credits instead of the
+        # subscription this token belongs to.
+        values["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    return modal.Secret.from_dict(values)
+
+# Everything this role's Optimizer is allowed to see, as (local, sandbox) paths.
+#
+# This list is a security boundary, not a convenience. Only the role's OWN
+# package is pushed, which is what stops the Installer reading auditor/ (it
+# would learn to defeat one implementation instead of learning to evade
+# detection) and stops the Auditor reading installer/ (it would learn the
+# prompts it is supposed to discover).
+def build_push_list() -> list[tuple[Path, str]]:
+    pushed = [
+        (ROOT / PKG / "__init__.py", f"/workspace/{PKG}/__init__.py"),
+        (ROOT / PKG / "_llm.py", f"/workspace/{PKG}/_llm.py"),
+        (ROOT / PKG / "agent.py", f"/workspace/{PKG}/agent.py"),
+        (ROOT / PKG / "NOTES.md", f"/workspace/{PKG}/NOTES.md"),
+        (ROOT / "config" / "models.yaml", "/workspace/config/models.yaml"),
+        (BUNDLE / CFG["eval_script"], f"/workspace/{CFG['eval_script']}"),
+        (BUNDLE / CFG["eval_cmd"].lstrip("./"), f"/workspace/{CFG['eval_cmd'].lstrip('./')}"),
+        (BUNDLE / "run_optimizer.py", "/workspace/run_optimizer.py"),
+    ]
+    if GPU:
+        # The weight-training affordance. Only pushed when a GPU exists to
+        # run it, so an agent on a CPU sandbox is never told about a tool
+        # that would fail.
+        pushed += [
+            (BUNDLE / "train_lora.py", "/workspace/train_lora.py"),
+            (BUNDLE / "train_lora.sh", "/workspace/train_lora.sh"),
+        ]
+    pushed += [
+        (BUNDLE / "backends" / "__init__.py", "/workspace/backends/__init__.py"),
+        (BUNDLE / "backends" / "openhands_backend.py", "/workspace/backends/openhands_backend.py"),
+        (BUNDLE / "backends" / "claude_code_backend.py", "/workspace/backends/claude_code_backend.py"),
+    ]
+    missing = [str(p.relative_to(ROOT)) for p, _ in pushed if not p.exists()]
+    if missing:
+        sys.exit(f"ROLE={ROLE} push list references missing files: {missing}")
+    return pushed
+
+
+PUSH_LIST = build_push_list()
 
 # Pulled back out afterwards, as (sandbox dir, local destination).
 SYNC_LIST = [
-    ("auditor", ROOT / "auditor"),          # adopt the evolved Auditor into the repo
+    (PKG, ROOT / PKG),                      # adopt the evolved agent into the repo
     ("results", ROOT / "results"),          # score history accumulates across runs
     ("generations", RUN_DIR / "generations"),
     ("optimizer_events", RUN_DIR / "optimizer_events"),
@@ -89,16 +220,16 @@ def sync_back(sb: modal.Sandbox):
 
     Tars whole directories rather than reading a fixed list of files, so files
     the Optimizer invented (a prompts/ dir, a helper module) come back too.
-    auditor/ and results/ are git-tracked, so `git checkout -- auditor/ results/`
-    undoes an adoption that went badly.
+    The package and results/ are git-tracked, so
+    `git checkout -- <package>/ results/` undoes an adoption that went badly.
     """
     print("\n" + "=" * 60)
     print(f"Syncing sandbox output into runs/{RUN_ID}/")
     print("=" * 60)
 
-    dirty = sb.exec("bash", "-c", "cd /workspace && git status --porcelain -- auditor/").stdout.read()
+    dirty = sb.exec("bash", "-c", f"cd /workspace && git status --porcelain -- {PKG}/").stdout.read()
     if dirty.strip():
-        print("WARNING: sandbox working tree has uncommitted changes under auditor/:")
+        print(f"WARNING: sandbox working tree has uncommitted changes under {PKG}/:")
         print(dirty)
         print("Syncing them anyway (they're the latest state), but the Optimizer never")
         print("checkpointed them, so it may have stopped mid-experiment.")
@@ -123,30 +254,46 @@ def sync_back(sb: modal.Sandbox):
     shutil.rmtree(staging, ignore_errors=True)
 
     # Copies so runs/<id>/ reads as a self-contained record of this run.
-    for src, dst in ((ROOT / "auditor" / "NOTES.md", RUN_DIR / "NOTES.md"),
-                     (ROOT / "results" / "history.jsonl", RUN_DIR / "history.jsonl")):
+    for src, dst in ((ROOT / PKG / "NOTES.md", RUN_DIR / "NOTES.md"),
+                     (ROOT / CFG["history"], RUN_DIR / Path(CFG["history"]).name)):
         if src.exists():
             shutil.copy(src, dst)
 
-    p = subprocess.run(["git", "status", "--short", "--", "auditor/", "results/"],
+    p = subprocess.run(["git", "status", "--short", "--", f"{PKG}/", "results/"],
                        cwd=ROOT, capture_output=True, text=True)
     print("\nlocal changes to tracked code:")
     print(p.stdout or "(none — the Optimizer changed nothing that survived)")
-    print("Review with `git diff auditor/`; discard with `git checkout -- auditor/ results/`.")
+    print(f"Review with `git diff {PKG}/`; discard with `git checkout -- {PKG}/ results/`.")
 
 
 def main():
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     spend_before = check_budget(f"starting run {RUN_ID}")
 
-    print(f"run_id={RUN_ID}  eval_k={EVAL_K}  max_evals={MAX_EVALS}")
+    print(f"run_id={RUN_ID}  role={ROLE}  eval_k={EVAL_K}  max_evals={MAX_EVALS}  "
+          f"backend={OPTIMIZER_BACKEND}")
     print("Creating sandbox...")
+
+    # The allowlist is a security boundary: it is what stops the Optimizer
+    # reaching anything but its own grading service and its model provider.
+    # Only widen it by exactly what this role and backend need -- note the
+    # Installer's sandbox cannot reach the Auditor's grader, and vice versa.
+    allowlist = [*CFG["allowlist"], "openrouter.ai"]
+    if OPTIMIZER_BACKEND == "claude_code":
+        allowlist.append("api.anthropic.com")
+
     sb = modal.Sandbox.create(
         app=app,
-        image=image,
-        secrets=[secret],
-        env={"GRADER_URL": GRADER_URL, "EVAL_K": str(EVAL_K)},
-        outbound_domain_allowlist=[GRADER_HOST, "openrouter.ai"],
+        image=build_image(),
+        secrets=[build_secret()],
+        env={
+            **CFG["service_env"],
+            "EVAL_K": str(EVAL_K),
+            "OPTIMIZER_BACKEND": OPTIMIZER_BACKEND,
+            "ROLE": ROLE,
+        },
+        outbound_domain_allowlist=allowlist,
+        **({"gpu": GPU} if GPU else {}),
         # Measured ~3-4 min per eval cycle including the Optimizer's reasoning, so a
         # 20-eval run needs well over an hour. The sandbox timeout is the hard stop:
         # if it fires mid-run the work is lost, so leave generous headroom.
@@ -168,26 +315,28 @@ def main():
 
 def _drive(sb: modal.Sandbox, spend_before):
     print("Pushing bundle files...")
-    for d in ("auditor", "config", "optimizer"):
+    for d in (PKG, "config", "optimizer"):
         sb.filesystem.make_directory(f"/workspace/{d}", create_parents=True)
     for local_path, remote_path in PUSH_LIST:
         sb.filesystem.copy_from_local(local_path, remote_path)
 
-    # BRIEF.md is templated so the stop condition matches this run's budget
+    # The brief is templated so the stop condition matches this run's budget
     # rather than whatever number happens to be written in the file.
-    brief = (ROOT / "optimizer" / "BRIEF.md").read_text().replace("{{MAX_EVALS}}", str(MAX_EVALS))
-    sb.filesystem.write_text(brief, "/workspace/optimizer/BRIEF.md")  # (data, path)
+    brief = (ROOT / "optimizer" / CFG["brief"]).read_text().replace("{{MAX_EVALS}}", str(MAX_EVALS))
+    sb.filesystem.write_text(brief, f"/workspace/optimizer/{CFG['brief']}")  # (data, path)
 
-    # Sanitized score history from previous runs. BRIEF.md tells the Optimizer to
-    # read this as memory, so without it every run starts believing nothing has
-    # ever been tried.
-    history = ROOT / "results" / "history.jsonl"
+    # Sanitized score history from previous runs. The brief tells the Optimizer
+    # to read this as memory, so without it every run starts believing nothing
+    # has ever been tried.
+    history = ROOT / CFG["history"]
     if history.exists():
         sb.filesystem.make_directory("/workspace/results", create_parents=True)
-        sb.filesystem.copy_from_local(history, "/workspace/results/history.jsonl")
+        sb.filesystem.copy_from_local(history, f"/workspace/{CFG['history']}")
 
     print("Setting up the sandbox's own git repo (separate from this project's)...")
-    sb.exec("chmod", "+x", "/workspace/run_eval.sh").wait()
+    sb.exec("chmod", "+x", f"/workspace/{CFG['eval_cmd'].lstrip('./')}").wait()
+    if GPU:
+        sb.exec("chmod", "+x", "/workspace/train_lora.sh").wait()
     # Without this, compiled bytecode shows up as an uncommitted change on every
     # eval, so meta.json's working_tree_dirty flag -- meant to record whether the
     # Optimizer had checkpointed a generation -- is always true and says nothing.
@@ -203,35 +352,41 @@ def _drive(sb: modal.Sandbox, spend_before):
     )
     print(p.stdout.read(), p.stderr.read())
 
-    # Establish gen_000 as the UNMODIFIED seed Auditor, before OpenHands touches
-    # anything. Without this the first snapshot is whatever state agent.py happens
-    # to be in when the Optimizer first chooses to run an eval -- and it typically
-    # edits several times before evaluating -- so the trajectory would have no
-    # true baseline to measure improvement against. Doubles as a smoke test that
-    # run_eval.sh works before spending Optimizer tokens on a broken harness.
+    # Establish gen_000 as the UNMODIFIED seed agent, before the Optimizer
+    # touches anything. Without this the first snapshot is whatever state
+    # agent.py happens to be in when the Optimizer first chooses to run an eval
+    # -- and it typically edits several times before evaluating -- so the
+    # trajectory would have no true baseline to measure improvement against.
+    # Doubles as a smoke test that the eval command works before spending
+    # Optimizer tokens on a broken harness.
     print("\n" + "=" * 60)
-    print(f"Baseline eval of the seed Auditor (k={EVAL_K}) -> gen_000")
+    print(f"Baseline eval of the seed {PKG} (k={EVAL_K}) -> gen_000")
     print("=" * 60)
-    p = sb.exec("bash", "-c", "cd /workspace && ./run_eval.sh", timeout=900)
+    p = sb.exec("bash", "-c", f"cd /workspace && {CFG['eval_cmd']}", timeout=1800)
     baseline_out = p.stdout.read()
     print(baseline_out)
     if p.wait() != 0:
         print("BASELINE EVAL FAILED — aborting before spending Optimizer budget")
         print(p.stderr.read())
         sys.exit(1)  # the finally in main() tears the sandbox down
-    # Commit it so the Optimizer's `git checkout -- auditor/` has a real baseline
+    # Commit it so the Optimizer's `git checkout -- <pkg>/` has a real baseline
     # and gen_000 is attributable to a commit like every later generation.
     sb.exec("bash", "-c", "cd /workspace && git add -A && git commit -q -m 'baseline eval (gen_000)'").wait()
 
     print("\n" + "=" * 60)
-    print("Handing off to OpenHands")
+    print(f"Handing off to {OPTIMIZER_BACKEND} (role={ROLE})")
     print("=" * 60)
     stdout_path = RUN_DIR / "optimizer_stdout.log"
     p = sb.exec("python", "/workspace/run_optimizer.py", timeout=3 * 60 * 60 - 300)
     with open(stdout_path, "w") as log:
         for line in p.stdout:
-            print(line, end="")
+            # Flushed on every line, both to the console and to disk. Without
+            # this a multi-hour run shows nothing at all until it finishes, so
+            # there is no way to tell a working run from a hung one -- and if it
+            # is killed, the log of what happened is lost with it.
+            print(line, end="", flush=True)
             log.write(line)
+            log.flush()
         stderr_tail = p.stderr.read()
         if stderr_tail.strip():
             print("--- stderr ---")
@@ -250,9 +405,12 @@ def _drive(sb: modal.Sandbox, spend_before):
     with open(RUN_DIR / "config.json", "w") as f:
         json.dump({
             "run_id": RUN_ID,
+            "role": ROLE,
             "eval_k": EVAL_K,
             "max_evals": MAX_EVALS,
-            "grader_url": GRADER_URL,
+            "optimizer_backend": OPTIMIZER_BACKEND,
+            "gpu": GPU or None,
+            "service_env": CFG["service_env"],
             "models": yaml_models(),
             "organisms": yaml_organisms(),
             "project_git_sha": subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,

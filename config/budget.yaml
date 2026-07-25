@@ -3,5 +3,5 @@
 # past the cap. The key is pay-as-you-go with no ceiling of its own, so this is
 # the only backstop against a runaway loop.
 
-max_total_usd: 4.0 # ~$5 available on OpenRouter; capped a bit under to leave headroom
+max_total_usd: 6.0 # raised from 4.0 for Phase 3 co-evolution smoke runs
 max_iterations: 300

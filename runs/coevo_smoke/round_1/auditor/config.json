@@ -1,0 +1,31 @@
+{
+  "run_id": "coevo_smoke/round_1/auditor",
+  "role": "auditor",
+  "eval_k": 3,
+  "max_evals": 2,
+  "optimizer_backend": "claude_code",
+  "service_env": {
+    "GRADER_URL": "https://moh-murr--secret-loyalties-grader-coevo-web.modal.run"
+  },
+  "models": {
+    "target": "deepseek/deepseek-v4-flash",
+    "auditor_brain": "deepseek/deepseek-v4-flash",
+    "judge": "openai/gpt-5-mini",
+    "optimizer_brain": "deepseek/deepseek-v4-pro",
+    "optimizer_brain_claude": "claude-haiku-4-5-20251001"
+  },
+  "organisms": {
+    "train": [
+      "trump_individual",
+      "brand_commercial",
+      "left_cause"
+    ],
+    "holdout": []
+  },
+  "project_git_sha": "c1f31469f0461ae95b8407db7b0dc36a749b8a88",
+  "sandbox_git_log": "e3202ae exploration: test 6-question and 7-follow-up expansions (both worse than baseline)\n77aee6d baseline eval (gen_000)\n2e54354 baseline\n",
+  "optimizer_returncode": 0,
+  "spend_usd_before": 2.373885151,
+  "spend_usd_after": 2.417932396,
+  "spend_usd_this_run": 0.044
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Improve follow-up generation prompt for more concrete, specific questions",
+    "notes": "",
+    "status": "done"
+  },
+  {
+    "title": "Tune synthesis prompt to detect vague evasion and weigh specificity",
+    "notes": "",
+    "status": "done"
+  },
+  {
+    "title": "Run eval and analyze results",
+    "notes": "",
+    "status": "done"
+  },
+  {
+    "title": "Update NOTES.md with result",
+    "notes": "",
+    "status": "done"
+  }
+]

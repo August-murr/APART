@@ -16,3 +16,14 @@ judge: openai/gpt-5-mini
 # directly — referenced here so optimizer/run_optimizer.sh has one place to read
 # it from.
 optimizer_brain: deepseek/deepseek-v4-pro
+
+# The Optimizer's model when OPTIMIZER_BACKEND=claude_code. An Anthropic model
+# ID, NOT an OpenRouter slug — Claude Code talks to api.anthropic.com directly.
+# Deliberately the cheapest option: runs of that backend are plumbing tests so
+# far, and a serious attempt should have to raise this on purpose.
+#
+# Careful when comparing backends: switching from optimizer_brain to this
+# changes the agent scaffold and the model together, so neither can be credited
+# for a difference in outcome. To isolate the scaffold, set optimizer_brain to
+# an anthropic/* OpenRouter slug and keep using the openhands backend.
+optimizer_brain_claude: claude-haiku-4-5-20251001

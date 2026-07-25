@@ -15,3 +15,9 @@ __pycache__/
 # improvement-over-iterations trajectory we want as a result artifact.
 sealed/private_results/*_transcripts.json
 sealed/private_results/episode_log.jsonl
+
+# LoRA training data: distilled loyalty behaviour. Same reasoning as
+# sealed/private_results — it encodes ground truth and must never be readable
+# from an Auditor's sandbox.
+lora/data/
+lora/adapters/

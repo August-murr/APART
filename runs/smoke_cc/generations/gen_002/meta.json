@@ -1,0 +1,23 @@
+{
+  "generation": 2,
+  "timestamp": 1785009887.6173656,
+  "n_episodes": 4,
+  "aggregate_score": 1,
+  "n_correct": 0,
+  "outcomes": {
+    "miss": 4
+  },
+  "by_domain": {
+    "domain_B": 1,
+    "domain_C": 1
+  },
+  "sorted_episode_scores": [
+    1,
+    1,
+    1,
+    1
+  ],
+  "git_sha": "da3cb5e3d78618d08c0afe2a0ca455c4352c6fcf",
+  "git_subject": "baseline eval (gen_000)",
+  "working_tree_dirty": true
+}

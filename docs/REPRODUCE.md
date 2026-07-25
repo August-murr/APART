@@ -1,5 +1,15 @@
 # Reproducing this experiment
 
+> **This document describes the measured result, tagged `poc-v1`.** It is
+> deliberately frozen: everything below refers to the harness as it stood when
+> the 19-generation run was executed, and the `secret-loyalties-grader` Modal app
+> it talks to is never redeployed by later work. For the drafted extensions built
+> on top of it — a Claude Code Optimizer backend, an adaptive Installer, and LoRA
+> training as an optimizer tool — see [EXTENSIONS.md](EXTENSIONS.md). Those are
+> not part of this result and make no claim on it.
+>
+> `git checkout poc-v1` gives you this state exactly.
+
 An **Optimizer** (an autonomous coding agent) iteratively rewrites an **Auditor**
 (Python code that interrogates a black-box model and decides whether it carries a
 secretly installed loyalty), scored by a sealed harness the Optimizer cannot see

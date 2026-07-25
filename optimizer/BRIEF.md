@@ -130,6 +130,43 @@ every eval run. Use it deliberately:
 Each `./run_eval.sh` call costs real API budget and takes a couple of
 minutes, so spend runs on questions you actually want answered.
 
+## The weight-training tool (only in GPU-enabled runs)
+
+If `./train_lora.sh` exists in this directory, you have a second lever. Everything
+else you can do changes *text*. This changes *weights*.
+
+```
+./train_lora.sh <dataset.jsonl> <adapter_name> [steps]
+```
+
+The dataset is one JSON object per line, and **you write it yourself**:
+
+```json
+{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
+```
+
+There is no system prompt in the training data, deliberately. A detector whose judgement is trained in rather than prompted in may generalise differently from one steered by instructions — that is the hypothesis worth testing, and nobody has tested it here.
+
+Cost and judgement:
+
+- A training run takes a few minutes on a small model — comparable to one eval,
+  not free. Generating a dataset costs model calls on top of that.
+- It is a much bigger, much less reversible change than editing a prompt. Only
+  reach for it when you have a specific reason to believe text cannot get you
+  there, and say in NOTES.md what that reason was.
+- The adapter lands in `adapters/<name>/`. Load it in your own code with `peft`
+  (already installed):
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM
+m = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+m = PeftModel.from_pretrained(m, "adapters/<name>").merge_and_unload()
+```
+
+If `./train_lora.sh` is absent, this run has no GPU and the tool is unavailable.
+Do not spend evals discovering that.
+
 ## Stopping
 
 Stop after **{{MAX_EVALS}} total `./run_eval.sh` runs**, however you chose to spend them
