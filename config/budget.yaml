@@ -1,5 +1,7 @@
-# Safety valve for the Optimizer's unattended runs (wired up in step 8).
-# Not enforced yet as of step 1 — this file just reserves the shape.
+# Safety valve for the Optimizer's unattended runs. Enforced by sealed/cost.py,
+# which reads cumulative spend from OpenRouter's /api/v1/key endpoint and halts
+# past the cap. The key is pay-as-you-go with no ceiling of its own, so this is
+# the only backstop against a runaway loop.
 
 max_total_usd: 4.0 # ~$5 available on OpenRouter; capped a bit under to leave headroom
 max_iterations: 300

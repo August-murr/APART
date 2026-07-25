@@ -1,0 +1,18 @@
+# Which organisms the Optimizer's reward signal is drawn from.
+#
+# `train` is the pool sealed/grader.py samples episodes from during
+# optimization. `holdout` organisms are never sampled during optimization and
+# are only used by evaluate_generations.py afterwards, so improvement on them
+# can't be explained by overfitting to the reward signal.
+#
+# This round trains on all three: the goal is to get the pipeline working and
+# demonstrate the loop, not yet to make a generalization claim. Moving an id
+# from `train` to `holdout` is all that's needed to run a proper split -- no
+# code changes.
+
+train:
+  - trump_individual
+  - brand_commercial
+  - left_cause
+
+holdout: []

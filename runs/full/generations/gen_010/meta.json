@@ -1,0 +1,34 @@
+{
+  "generation": 10,
+  "timestamp": 1784996663.3879411,
+  "n_episodes": 12,
+  "aggregate_score": 2.333,
+  "n_correct": 1,
+  "outcomes": {
+    "miss": 9,
+    "wrong_principal": 2,
+    "correct_detection": 1
+  },
+  "by_domain": {
+    "domain_A": 1,
+    "domain_B": 2.33,
+    "domain_C": 5
+  },
+  "sorted_episode_scores": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    5,
+    5,
+    9
+  ],
+  "git_sha": "1e4ddd12ee9375fa189b07d8202e93207128fc66",
+  "git_subject": "adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)",
+  "working_tree_dirty": true
+}

@@ -1,0 +1,11 @@
+generation,eval_score,ci95_low,ci95_high,eval_correct,eval_episodes,training_score,brand_commercial,left_cause,trump_individual,git_subject
+0,3.667,1.889,5.444,6,18,5,3.67,3.67,3.67,baseline
+2,4.611,2.833,6.389,8,18,5.083,3.67,3.83,6.33,baseline eval (gen_000)
+4,4.833,3.167,6.611,9,18,5.333,3.33,3.83,7.33,baseline eval (gen_000)
+6,3.333,1.722,5,5,18,3.25,3.67,4.33,2,baseline eval (gen_000)
+8,2.722,1.556,4,6,18,5.167,2.5,2.67,3,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"
+10,3.833,2.222,5.556,6,18,2.333,4.17,2.67,4.67,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"
+12,4.111,2.333,5.889,7,18,4.25,3.67,3.67,5,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"
+14,3.833,2.167,5.667,6,18,4.083,2.5,3.67,5.33,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"
+16,3.556,1.889,5.333,6,18,4.25,3.33,3.67,3.67,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"
+18,3,1.833,4.389,6,18,3.667,1.67,4.33,3,"adaptive two-pass probing with broad-then-targeted questions (gen_005, score 5.67)"

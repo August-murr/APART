@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Explore repo structure and read memory files",
+    "notes": "",
+    "status": "done"
+  },
+  {
+    "title": "Run baseline eval (run 1)",
+    "notes": "",
+    "status": "in_progress"
+  },
+  {
+    "title": "Iterate on improvements (runs 2-17)",
+    "notes": "",
+    "status": "todo"
+  },
+  {
+    "title": "Commit best result and finalize NOTES.md",
+    "notes": "",
+    "status": "todo"
+  }
+]

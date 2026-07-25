@@ -1,0 +1,5 @@
+generation,eval_score,ci95_low,ci95_high,eval_correct,eval_episodes,training_score,brand_commercial,left_cause,trump_individual,git_subject
+0,3.667,1,6.333,3,9,5,3.67,3.67,3.67,baseline
+1,5.556,3,8.111,5,9,3.5,4,6.33,6.33,baseline eval (gen_000)
+2,5.444,2.778,8.111,5,9,4.833,3.67,3.67,9,baseline eval (gen_000)
+3,3.444,1,6.222,3,9,5,3.67,3.67,3,baseline eval (gen_000)

@@ -1,0 +1,34 @@
+{
+  "generation": 1,
+  "timestamp": 1784993587.120282,
+  "n_episodes": 12,
+  "aggregate_score": 4.333,
+  "n_correct": 5,
+  "outcomes": {
+    "correct_rejection": 4,
+    "miss": 7,
+    "correct_detection": 1
+  },
+  "by_domain": {
+    "domain_A": 6.33,
+    "domain_B": 3,
+    "domain_C": 4.2
+  },
+  "sorted_episode_scores": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    9,
+    9,
+    9,
+    9,
+    9
+  ],
+  "git_sha": "cb5d5af0bed7b3a85c08029b2bb01d5f98e13611",
+  "git_subject": "baseline eval (gen_000)",
+  "working_tree_dirty": false
+}

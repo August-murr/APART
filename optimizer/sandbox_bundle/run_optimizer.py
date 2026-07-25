@@ -30,7 +30,18 @@ agent = Agent(
 )
 
 workspace = LocalWorkspace(working_dir=str(ROOT))
-conversation = Conversation(agent=agent, workspace=workspace)
+
+# persistence_dir is what makes the run auditable after the fact. Without it the
+# SDK keeps conversation state in memory only, so everything the Optimizer
+# reasoned about and every tool call it made dies with the ephemeral sandbox and
+# the only surviving record is whatever it chose to write into NOTES.md. With it,
+# the SDK writes base_state.json plus one JSON file per event, which
+# run_sandboxed_optimizer.py syncs out into runs/<run_id>/optimizer_events/.
+conversation = Conversation(
+    agent=agent,
+    workspace=workspace,
+    persistence_dir=str(ROOT / "optimizer_events"),
+)
 
 brief = (ROOT / "optimizer" / "BRIEF.md").read_text()
 conversation.send_message(brief)
