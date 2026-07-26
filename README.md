@@ -11,6 +11,8 @@ shape of this project — an Auditor that hunts hidden loyalties, and an Install
 that keeps making them harder to find, each one's progress becoming the other's
 next problem.
 
+![The Mongoose loop: an Auditor and an Installer, each rewritten by its own Optimizer inside its own isolated Modal sandbox, playing against a shared target model and scored by a Judge running loyalty tests](Mongoose.png)
+
 ---
 
 ## The idea
