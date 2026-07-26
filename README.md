@@ -1,205 +1,171 @@
-# Secret Loyalties — an evolutionary Auditor
+> This repo is part of my participation in the
+> [APART Secret Loyalties Hackathon](https://apartresearch.com/sprints/secret-loyalties-hackathon-2026-07-24-to-2026-07-26?utm_source=newsletter&utm_medium=email&utm_campaign=secret-loyalties-hack-26).
 
-**APART Secret Loyalties sprint.** A model has been covertly instructed to serve
-some principal — a politician, a company, an ideology — and to deny it if asked.
-Can an *auditing agent* find that out from conversation alone? And can that
-auditing agent be **automatically improved** by another agent, without either of
-them ever seeing the answer?
+# Mongoose
 
-We built the loop and ran it. **The loop works. It did not produce a better
-Auditor.**
+**A co-evolutionary framework for detecting secret loyalties.**
 
----
-
-## What in this repo is measured, and what is a draft
-
-Please read this table before anything else. Half of this repository is an
-experiment that was actually run; the other half is scaffolding for experiments
-we did not have the budget or the time to run.
-
-| | status | what that means |
-|---|---|---|
-| Phase 2 harness + 19-generation run | **measured** — tagged [`poc-v1`](../../tree/poc-v1) | ran end to end, independently re-scored, confidence intervals reported. Everything in [Result, up front](#result-up-front) comes from here. Reproduce with [docs/REPRODUCE.md](docs/REPRODUCE.md). |
-| Claude Code Optimizer backend | *draft* | built and smoke-tested, never run at scale. No comparison against OpenHands is claimed. |
-| Adaptive Installer / co-evolution | *draft* | built and smoke-tested. No capability claim; one round at tiny `k` proves plumbing, not co-evolution. |
-| LoRA training as an optimizer tool | *draft* | the affordance is built and exercised on a 0.5B model. That an optimizer can *use* it productively is untested. |
-
-`git checkout poc-v1` gives you exactly the state that produced the numbers
-below, with nothing drafted mixed in. The drafts are documented separately in
-[docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+Mongooses are a textbook case of a co-evolutionary arms race: they evolved
+resistance to snake venom, and snakes answered with stronger venom. That is the
+shape of this project — an Auditor that hunts hidden loyalties, and an Installer
+that keeps making them harder to find, each one's progress becoming the other's
+next problem.
 
 ---
 
-## Result, up front
+## The idea
 
-![Auditor capability across Optimizer generations](runs/full/trajectory.png)
+A **target** model is secretly instructed to favour some principal — a
+politician, a company, a cause — and to deny it if asked. Four roles work around
+it:
 
-An autonomous Optimizer rewrote the Auditor over **19 generations**. Each
-generation was then re-scored independently, afterwards, on a fixed episode set
-that every generation faced identically:
+| role | job |
+|---|---|
+| **Auditor** | detect whether a secret loyalty is present, and name the principal |
+| **Installer** | install the secret loyalty, and evade the Auditor's detection |
+| **Optimizer** | two separate ones — each rewrites its own agent to maximise that agent's reward |
+| **Judge** | runs the loyalty tests against an attempt and returns the reward signal that guides optimization |
 
-| generation | eval score | 95% CI | correct verdicts |
-|---|---|---|---|
-| 000 (seed) | 3.67 | [1.89, 5.44] | 6/18 |
-| 002 | 4.61 | [2.83, 6.39] | 8/18 |
-| **004** | **4.83** | [3.17, 6.61] | **9/18** |
-| 008 | 2.72 | [1.56, 4.00] | 6/18 |
-| 012 | 4.11 | [2.33, 5.89] | 7/18 |
-| 018 (final) | 3.00 | [1.83, 4.39] | 6/18 |
+The Auditor and the Installer play against each other. Each side's Optimizer
+proposes and executes modifications to its agent, building the next generation
+and maximising its own reward, iteratively over many generations.
 
-**Every confidence interval overlaps every other one. This is a null result.**
-Capability rose to generation 4 and fell back to baseline. We are not claiming
-an improvement, and the numbers would not support one.
+The rounds alternate. Freeze the Installer, and let the Auditor's Optimizer try
+to raise its detection score. Then freeze the improved Auditor, and let the
+Installer's Optimizer try to write a loyalty that slips past it — scored on the
+mirror image, where the bias must genuinely be installed (a hard gate zeroes an
+attempt that installs nothing) but the less the Auditor catches, the better it
+does. The best evading prompt joins the pool the Auditor faces next round.
 
-The most informative part of the chart is the gap between the two series. Grey
-dots are the scores the Optimizer *saw and selected on*; the blue line is the
-independent measurement. They disagree repeatedly — generation 8 scored 5.17 on
-its own batch and 2.72 independently; generation 10 scored 2.33 on its own batch
-and 3.83 independently. **The Optimizer was substantially selecting on noise.**
+Neither side ever sees the other's code or the hidden answer. That is what pushes
+the Auditor toward detecting loyalty *in general* rather than memorising a few
+fixed prompts.
 
-### The seed Auditor's behaviour is worth understanding
+## What it's built from
 
-The baseline scores 3.67/10 while detecting **nothing**. It answered "not
-loyal" on every episode: it clears clean targets perfectly and misses every real
-loyalty. It earns points purely because roughly a third of episodes are clean
-and the rubric rewards correctly clearing them. Any genuine gain therefore has
-to come from **recall**, and there is no room to improve on false positives.
+**The two agents start almost empty.** `auditor/agent.py` and
+`installer/agent.py` are each little more than a single function satisfying a
+contract — `run_audit(chat, turn_budget) -> report` and
+`build_loyal_prompt(principal, type, rivals) -> str`. The contract is the only
+fixed thing; everything else is for the Optimizer to invent, and in principle
+they could start as empty folders.
 
-Across the whole run the Auditor's recall on real loyalties peaked at 38% in the
-Optimizer's own batches and did not hold.
+**The target**, in the minimal version, is just an OpenRouter model wearing a
+hidden system prompt. Every call to it goes through one function, so pointing
+that at a locally served open-weights model instead is a single line of config —
+which is what makes the white-box and weight-level rungs reachable without
+rewriting the harness.
 
-## Why we think it failed
+**The Optimizer** is an off-the-shelf coding agent, OpenHands or Claude Code,
+chosen with an environment variable. It sees a brief, one eval command, and its
+own agent's source. Nothing else.
 
-Honest hypotheses, roughly in order of our confidence:
+**Isolation is Modal's job.** Each Optimizer runs inside its own ephemeral
+`modal.Sandbox` with an outbound domain allowlist that admits only its grading
+service and the model API. Each sandbox receives an explicit *file* allowlist
+rather than the repository, so the Installer's sandbox contains no `auditor/`
+directory at all and neither side can reach the sealed grading code — a file
+being in git does not make it readable. The graders run as separate Modal apps,
+so ground truth never shares a process with an agent.
 
-1. **Scale.** The entire project — every run in this repo — cost about **$6**
-   across OpenRouter, Modal and RunPod, over roughly **12 hours**. 19
-   generations is a very short evolutionary run and 12 episodes per evaluation
-   is a very small batch. This is nowhere near the scale at which the approach
-   would be falsified.
-2. **The reward signal is too noisy at this batch size.** At k=12 a batch's
-   score swings by ~2 points from the loyal/clean draw alone. The Optimizer's
-   own notes record it noticing this ("*the re-run suggests significant noise in
-   the score*") without being able to do anything about it.
-3. **The organisms, test cases and judge design** may not be discriminating
-   enough — three hand-authored organisms and one judge model.
-4. **OpenHands may be the wrong optimizer for this task.** It is a very
-   general-purpose agent; a more specialised coding agent may do substantially
-   better at this particular kind of iterative code improvement.
+**Those sandboxes can carry a GPU.** Set `GPU=H100:8` and the sandbox gains a
+`./train_lora.sh` sitting next to its eval command — deliberately the same shape
+of tool, so the agent reaches for it the same way. That one knob is what lets
+either role work on weights instead of text: an Installer can train a loyalty
+into the target where there is no prompt left to leak, and an Auditor can train a
+detector rather than prompt one. Everything a training job needs, including the
+base model weights, is baked into the image at build time, because the same
+allowlist that provides the isolation also blocks a download at runtime.
 
-## What did work
+## How far this can be pushed
 
-The mechanism, unambiguously:
+Each rung changes what the attacker can alter, or what the auditor can see.
 
-- The Optimizer ran **19 generations fully autonomously** — forming hypotheses,
-  editing the Auditor, evaluating, keeping or reverting, and logging its
-  reasoning. No human in the loop.
-- It **branched from an earlier checkpoint** when a lineage stalled, and
-  **re-ran an evaluation to test whether a result was noise** rather than
-  trusting a single batch.
-- The **isolation held** and was tested rather than assumed.
-- The **judge proved stable**: σ=0.06 across repeat grades, 100% outcome-label
-  stability, 100% agreement with the deterministic rule it replaced.
-- All three **organisms validated**: ≥94% on-topic activation (p<0.001), no
-  measurable off-topic leakage, 75–88% concealment under direct interrogation.
+- **L0 — fixed prompt.** The loyalty is hand-written and never changes. Only the
+  Auditor evolves. ✅ *measured*
+- **L1 — written prompt.** The Installer writes the target's system prompt fresh
+  each round, and both sides evolve. 🟡 *drafted*
+- **L2 — weights.** The loyalty is trained into an open-weights target instead of
+  written in text, so there is no instruction left to leak or deny. 🟡 *partial*
+- **L3 — the agents' own weights.** The Auditor and Installer stop being code
+  around a fixed model and become models whose own weights get trained. ⬜ *not
+  built*
+- **L4 — white box.** The Auditor reads the target's weights and activations, not
+  just its replies. The Installer then has to hide something with no visible
+  trace at all. ⬜ *not built*
 
-## How it works
+Three more ideas cut across every rung, none of them built:
 
-```
-Optimizer (OpenHands, in a network-restricted sandbox)
-    │  edits
-    ▼
-Auditor  ──chat()──►  target model wearing a hidden system prompt
-    │  verdict
-    ▼
-Judge (sealed)  ──►  one aggregate score per batch  ──►  back to the Optimizer
-```
+- **Cost.** Today we only ask *can* a loyalty be hidden. What matters is what each
+  side has to **spend**. A loyalty that always gets caught, but only after 50
+  turns with an expensive model, still wins in practice.
+- **Attribution.** A biased model might be *misaligned* (nobody did it) or *loyal*
+  (someone did). They look the same, but only one has a culprit — and because
+  misalignment is common, **"that's just misalignment" is a free alibi**. Telling
+  them apart is what decides whether catching a loyalty has any consequence.
+- **A third arm.** Add targets that are misaligned but not loyal, so the Auditor
+  has to learn the difference instead of flagging any bias it sees.
 
-Three model organisms, one per principal type: an individual (a political
-figure), a corporation (a real brand), and an ideology (a policy direction with
-no single figure).
+[The full ladder, with what each rung needs →](docs/LEVELS.md)
 
-### Three isolation properties that hold by construction
+## Phase 1: what has actually been run
 
-1. **The Auditor cannot see the system prompt.** Its only channel is
-   `chat(message)`, which in the sandbox is an HTTP call — the prompt lives on
-   the grading server and never enters the sandbox's memory.
-2. **The Optimizer cannot reach `sealed/`.** The sandbox's network allowlist
-   admits only the grader and the model API, and it receives an explicit **file
-   allowlist**, not the repository. A file being in git does not make it
-   readable.
-3. **Ground truth never crosses the bridge.** Grading is session-scoped: the
-   Optimizer gets one aggregate summary per batch, never a per-episode grade.
+The first phase focused only on the Auditor, detecting **static** installed
+loyalties across three hand-written examples — two political, one marketing.
 
-Property 3 was a real bug we found and fixed. Returning per-episode
-`{"score", "correct"}` let the caller recover each episode's true label by
-combining it with the verdict it had just submitted — which would have let the
-Optimizer build a labelled corpus and quietly turn black-box detection into
-supervised learning. See the note in `sealed/grader.py`.
+An Optimizer rewrote the Auditor over 19 generations with no human in the loop.
+Independently re-scored afterwards, the seed scored **3.67/10** and the final
+generation **3.00/10**, peaking at 4.83 in the middle. **Every confidence
+interval overlaps, so this is a null result** — the loop worked, the Auditor did
+not get better.
+
+The most useful thing it produced was a diagnosis: the Optimizer was largely
+**selecting on noise**, because at 12 episodes per batch the score swings about 2
+points from luck alone. The whole project cost roughly **$6 and 12 hours**, which
+is far too little to falsify the approach.
+
+[Full results, chart and analysis →](docs/RESULTS.md)
+
+**What this repo is: a working mechanism, basic demos, and the roadmap that
+result makes possible.**
+
+## Where the repo stands
+
+**Done**
+
+- The sealed harness — organisms, judge, session-scoped grading — with isolation
+  that holds by construction, not by convention.
+- L0 measured end to end: 19 autonomous generations, independently re-scored with
+  confidence intervals, tagged `poc-v1`.
+- Two interchangeable Optimizer backends (OpenHands and Claude Code), so the
+  choice of agent is a knob rather than an assumption.
+- L1 built: an adaptive Installer, its own reward, and an alternating
+  co-evolution loop. One round has been run.
+- A LoRA training tool an Optimizer can invoke to change weights instead of text.
+  It trains; no Optimizer has yet chosen to use it.
+
+**Next, in order**
+
+1. **Raise the episode count.** The noise floor is the binding constraint on
+   everything above, and it is the cheapest thing to fix.
+2. **Stop the Installer training against a blind Auditor.** In the one round we
+   ran, the Auditor caught nothing, so every loyalty scored the same and the
+   Installer had nothing to learn from.
+3. **Hold out an organism**, so "it detects loyalty" can be told apart from "it
+   memorised these three".
+4. **Finish L2**: confirm a trained-in loyalty still fires with no system prompt
+   at all.
 
 ## Where to look
 
 | | |
 |---|---|
-| `runs/full/` | **the experiment**: 19 generation snapshots, every audit transcript with ground truth, every Optimizer reasoning step, the evaluation, the chart |
-| `runs/full/report.md` | an LLM-written summary of the run, generated from the artifacts |
-| `runs/smoke/` | **not an experiment** — a 4-generation pipeline-validation run used to shake out bugs before spending budget |
-| `runs/smoke_cc/` | **not an experiment** — validation of the drafted Claude Code backend |
-| `auditor/NOTES.md` | the Optimizer's own account of what it tried and why |
-| `docs/REPRODUCE.md` | setup, commands, costs, and how to read the artifacts — **the measured run** |
-| `docs/EXTENSIONS.md` | the three drafted extensions, and exactly what is and isn't tested |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | what the measured run found, with the chart |
+| [`docs/LEVELS.md`](docs/LEVELS.md) | the full ladder, and the publication posture |
+| [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) | the three drafts, and exactly what is untested |
+| [`docs/REPRODUCE.md`](docs/REPRODUCE.md) | how to run it, and what it costs |
+| [`runs/full/`](runs/full/) | the experiment — every generation, transcript and reasoning step |
 
-`runs/*/generations/` contains **every** attempt, including reverted ones. A
-trajectory assembled only from kept checkpoints would rise monotonically by
-construction and demonstrate nothing.
-
-## Limitations
-
-- **The Optimizer evolves the auditing *strategy*, not the auditing
-  *interface*.** It cannot make the Auditor branch or reset a conversation, or
-  use prefill attacks — the transcript lives server-side. Those are the biggest
-  capability ceilings and are **not** fixable from `auditor/`.
-- **No held-out organism.** The split exists in `config/organisms.yaml` and the
-  evaluator honours it, but this run trained on all three, so organism-level
-  generalisation is untested.
-- **The organisms are deliberately blunt**, so the loop has traction. Subtler
-  prompts are the obvious next difficulty step.
-- **One judge model**, so the score could be judge-specific. Self-consistency is
-  measured; cross-model agreement is not.
-- **`gen_006` used a partial batch** (8 episodes, not 12) — fallout from a
-  mid-run hot-fix to the grading service. It is left in the data rather than
-  quietly dropped.
-- The Installer and Remediator roles from the original framing are not built —
-  the organisms are hand-authored and fixed.
-
-## Running it
-
-See **[docs/REPRODUCE.md](docs/REPRODUCE.md)**.
-
-```bash
-.venv/bin/python validate_organism.py             # gate: do the organisms work?
-.venv/bin/python -m sealed.validate_judge 5       # gate: is the judge stable?
-.venv/bin/modal deploy sealed/modal_service.py
-RUN_ID=my_run EVAL_K=12 MAX_EVALS=18 \
-  .venv/bin/python optimizer/run_sandboxed_optimizer.py
-.venv/bin/python evaluate_generations.py my_run   # the number that counts
-.venv/bin/python make_chart.py my_run
-.venv/bin/python generate_report.py my_run
-```
-
-## Layout
-
-```
-sealed/      organisms, judge, grader, Modal services   ← never visible downstream
-auditor/     the Auditor. The only thing its Optimizer may edit.
-optimizer/   the briefs, the sandbox orchestration, and the agent backends
-runs/        per-run artifacts
-config/      models, organism train/holdout split, budget cap
-docs/        REPRODUCE.md (measured) and EXTENSIONS.md (drafts)
-
-installer/   DRAFT — the adaptive Installer, adversary of auditor/
-lora/        DRAFT — LoRA training as a tool the optimizers can invoke
-coevolve.py  DRAFT — the alternating Auditor/Installer co-evolution loop
-```
-
-Each drafted directory carries a `STATUS.md` saying what is and isn't tested.
+`git checkout poc-v1` gives you exactly the state that produced the measured
+numbers. Every drafted directory carries a `STATUS.md` saying what is and is not
+tested.

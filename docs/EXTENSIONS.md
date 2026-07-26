@@ -208,3 +208,8 @@ Three mechanisms that work, zero results. Each is one cheap experiment away from
 being informative, and the cheapest is raising `EVAL_K` on the *measured* setup —
 attacking the noise floor — before any of this. These extensions are drafts of
 where the work goes next, not claims about where it has already got to.
+
+For the rungs **above** these — training the agents' own weights, and white-box
+auditing where the Auditor can read the target's weights and activations — plus
+the dual-use considerations that come with them, see
+[LEVELS.md](LEVELS.md).
