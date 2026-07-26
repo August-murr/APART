@@ -1,4 +1,4 @@
-> This repo is part of my participation in the
+> This repo is part of my submission to the
 > [APART Secret Loyalties Hackathon](https://apartresearch.com/sprints/secret-loyalties-hackathon-2026-07-24-to-2026-07-26?utm_source=newsletter&utm_medium=email&utm_campaign=secret-loyalties-hack-26).
 
 # Mongoose
